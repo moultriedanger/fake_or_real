@@ -4,7 +4,12 @@ import requests
 import os
 import librosa
 import io
+import tensorflow as tf
+import numpy as np
 
+m = tf.keras.models.load_model('../app/model/my_model.h5')
+
+data_path = '/Users/moultriedangerfield/Desktop/fake_or_real/data'
 
 app = Flask(__name__)
 CORS(app)
@@ -12,8 +17,6 @@ CORS(app)
 @app.route("/")
 def render_home():
     return render_template('index.html')
-
-data_path = '/Users/moultriedangerfield/Desktop/fake_or_real/data'
 
 @app.route("/upload", methods=["POST"])
 def hello_world():
@@ -24,12 +27,22 @@ def hello_world():
 
             #save the audio
             file_path = os.path.join(data_path, file.filename)
-            file.save(file_path)
+            file.save(file_path)            
 
-            #process audio
-            sr, duration = process_audio(file_path)
+            #process audio to be put in model
+            processed = process_audio_file(file_path)
 
-            file_content = "File written. Duration: " + str(duration) + " seconds. Sample rate: " + str(sr)
+            prediction = m.predict(processed)
+
+            #Interpret results
+            if prediction[0][0] > prediction[0][1]:
+                result = 'Fake'
+                confidence_level = prediction[0][0]
+            else:
+                result = 'Real'
+                confidence_level = prediction[0][1]
+
+            file_content = "File written. Predicted as " + str(result) + " " + "with confidence of " + str(confidence_level)
         else:
             file_content = 'No file selected'
     else:
@@ -37,11 +50,25 @@ def hello_world():
 
     return render_template('index.html', file_content=file_content)
 
-def process_audio(file_path):
-    # Load the audio file directly from the file path
-    y, sr = librosa.load(file_path, sr=None)  # sr=None to preserve the original sample rate
-    
-    # Calculate the duration
-    duration = librosa.get_duration(y=y, sr=sr)
-    
-    return sr, duration
+def process_audio_file(file_path):
+    # Load the audio file
+    audio, sr = librosa.load(file_path, sr=44100)
+
+    # Extract MFCCs with 40 coefficients
+    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
+
+    # Pad or truncate MFCCs to ensure a consistent shape (40, 220)
+    desired_length = 220
+    if mfccs.shape[1] < desired_length:
+        pad_width = desired_length - mfccs.shape[1]
+        mfccs = np.pad(mfccs, pad_width=((0, 0), (0, pad_width)), mode='constant')
+    else:
+        mfccs = mfccs[:, :desired_length]  # Truncate if too long
+
+    # Add the channel dimension (required by the model)
+    mfccs = np.expand_dims(mfccs, axis=-1)
+
+    # Add the batch dimension (for a single sample)
+    mfccs = np.expand_dims(mfccs, axis=0) 
+
+    return mfccs

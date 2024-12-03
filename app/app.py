@@ -1,11 +1,12 @@
 from flask import Flask, request, render_template
 from flask_cors import CORS
-import requests
+import requests, jsonify
 import os
 import librosa
 import io
 import tensorflow as tf
 import numpy as np
+
 
 m = tf.keras.models.load_model('../app/model/my_model.h5')
 
@@ -17,6 +18,31 @@ CORS(app)
 @app.route("/")
 def render_home():
     return render_template('index.html')
+
+@app.route("/upload_rec", methods=["POST"])
+def result():
+    if 'file' in request.files:  # This matches the 'file' key used in your frontend
+        file = request.files['file']  # Access the uploaded file
+        if file:
+            # Save the audio
+            file_path = os.path.join(data_path, file.filename)  # Save the file to your specified directory
+            file.save(file_path)  # Save the file locally
+
+            processed = process_audio_file(file_path)
+
+            prediction = m.predict(processed)
+            
+            #Interpret results
+            if prediction[0][0] > prediction[0][1]:
+                result = 'Fake'
+                confidence_level = prediction[0][0]
+            else:
+                result = 'Real'
+                confidence_level = prediction[0][1]
+
+            message = "File written. Predicted as " + str(result) + " " + "with confidence of " + str(confidence_level)
+
+            return message, 200  # Plain text response
 
 @app.route("/upload", methods=["POST"])
 def hello_world():

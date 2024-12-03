@@ -16,9 +16,16 @@
         <button>Send the file</button>
       </div>
     </form>
-    <div>
+    <div class="record-container">
+      <button class="record">Record</button>
+      <button class="stop">Stop</button>
+    </div>
+    <div class="result_box">
       <p>{{file_content}}</p>
     </div>
-    <!-- <script src="static/js/script.js"></script> -->
+    <script
+      type="module"
+      src="{{ url_for('static', filename='record.js') }}"
+    ></script>
   </body>
 </html>

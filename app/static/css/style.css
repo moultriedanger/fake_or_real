@@ -1,0 +1,115 @@
+body{
+    /* background-color: rgb(116, 116, 116); */
+    background-color:rgb(107, 129, 130);
+    margin: 0;
+}
+
+.header{
+    display: flex;
+    justify-content: center;
+    color:rgb(255, 255, 255)
+}
+
+
+.container{
+    display:flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.record_container{
+    width: 25%;
+    height: 25vh;
+    background-color: rgb(179, 179, 179);
+    border-radius: 30px;
+    text-align: center;
+    color: rgb(123, 123, 123);
+    margin-right: 5px;
+    display: flex;
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+}
+.record-box{
+    color: #1586ff;
+}
+
+.record{
+    border-radius: 10px;
+    background-color: #3bf560;
+    color:white;
+}
+.record:hover{
+    background-color: #0056b3;
+}
+
+.stop{
+    border-radius: 10px;
+    background-color: #ff3131;
+    color:white;
+}
+
+.upload_container{
+    width: 25%;
+    background-color: rgb(179, 179, 179);
+    border-radius: 30px;
+    height: 25vh;
+    display: flex;
+    justify-content: center; /* Center horizontally */
+    align-items: center; 
+    margin-left: 5px;
+}
+
+
+
+.upload_box {
+    /* border: 4px; */
+    /* border-color: rgb(116, 116, 116); */
+    /* border-style: solid; */
+    /* border-radius: 5px; */
+    display: flex;
+    flex-direction: row; /* Arrange children side by side */
+    justify-content: center; /* Center buttons horizontally */
+    align-items: center; /* Align buttons vertically */
+    gap: 10px; /* Space between buttons */
+    margin-left: 5px;
+    color: #1586ff;
+}
+
+.custom-file-label {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #7fb5ef;
+    width: 30%; 
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+  }
+.custom-file-label:hover {
+background-color: #0056b3;
+}
+
+.detect_btn{
+    background-color: #ff3131;
+    border-radius: 5px;
+    color: white;
+    /* width: ; */
+}
+
+.result_container{
+    display: flex;
+    justify-content: center;
+}
+
+.result_box{
+    border-style: solid;
+    border-radius: 5px;
+    border-color:rgb(46, 46, 46);
+    width: 25%; 
+    height: 5vh;
+    margin: 10px;
+}
+
+.result_container p{
+    color: white;
+}

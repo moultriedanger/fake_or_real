@@ -1,134 +1,97 @@
-//https://developer.mozilla.org/en-US/docs/Web/API/MediaStream_Recording_API/Using_the_MediaStream_Recording_API
-const record = document.querySelector(".record");
-const stop = document.querySelector(".stop");
+let audioContext;
+let processor;
+let input;
+let stream;
+let recordedChunks = [];
 
-//
-const result_box = document.querySelector(".result_box");
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
 
-if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    console.log("getUserMedia supported.");
-    navigator.mediaDevices
-      .getUserMedia(
-        // constraints - only audio needed for this app
-        {
-          audio: true,
-        },
-      )
-      // Success callback
-      .then((stream) => {
-        const mediaRecorder = new MediaRecorder(stream);
+startBtn.onclick = async () => {
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
 
-        record.onclick = () => {
-            mediaRecorder.start();
-            console.log(mediaRecorder.state);
-            console.log("recorder started");
-            record.style.background = "red";
-            record.style.color = "black";
-          };
+  input = audioContext.createMediaStreamSource(stream);
 
-        let chunks = [];
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
+  input.connect(processor);
+  processor.connect(audioContext.destination);
 
-        mediaRecorder.ondataavailable = (e) => {
-            chunks.push(e.data);
-        };
-        
-        stop.onclick = () => {
-            mediaRecorder.stop();
-            console.log(mediaRecorder.state);
-            console.log("recorder stopped");
-            record.style.background = "";
-            record.style.color = "";
-        };
-        
-        mediaRecorder.onstop = async (e) => {
+  processor.onaudioprocess = (e) => {
+    const channelData = e.inputBuffer.getChannelData(0); // Float32Array
+    recordedChunks.push(new Float32Array(channelData)); // copy
+  };
 
-          const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
+  console.log('Recording started');
+};
 
-          console.log('Blob type:', blob.type); // Inspect blob properties
+stopBtn.onclick = () => {
+  processor.disconnect();
+  input.disconnect();
+  audioContext.close();
 
-          chunks = []; 
+  // Flatten and convert to Int16
+  const buffer = flattenArray(recordedChunks);
+  const wavBuffer = encodeWAV(buffer, 1, 44100);
+  const blob = new Blob([wavBuffer], { type: 'audio/wav' });
 
-          const wavBlob = await blobToWav(blob, 44100, 1);
+  // Upload to backend
+  const formData = new FormData();
+  formData.append('file', blob, 'recording.wav');
 
-          // Create a FormData object to send the Blob
-          const formData = new FormData();
-          formData.append('file', wavBlob, 'recording.wav');
+  fetch('/upload_rec', {
+    method: 'POST',
+    body: formData
+  }).then(res => res.text()).then(alert);
 
-          // Send the FormData to the backend
-          const response = await fetch('/upload_rec', {
-            method: 'POST',
-            body: formData
-          });
-          const data = await response.text();
-          
-          const paragraph = document.createElement('p')
-          paragraph.textContent = data
+  recordedChunks = [];
+};
 
-          result_box.appendChild(paragraph)
-          
-          };
-      });
-  } else {
-    console.log("getUserMedia not supported on your browser!");
+function flattenArray(channelBuffer) {
+  const length = channelBuffer.reduce((acc, cur) => acc + cur.length, 0);
+  const result = new Float32Array(length);
+  let offset = 0;
+  channelBuffer.forEach(chunk => {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return result;
 }
 
-// source: chat gpt
-function createWavHeader(dataLength, numChannels, sampleRate) {
-  const header = new ArrayBuffer(44);
-  const view = new DataView(header);
+function encodeWAV(samples, numChannels, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
 
-  // RIFF identifier
-  view.setUint32(0, 0x52494646, false); // "RIFF"
-  view.setUint32(4, 36 + dataLength, true); // File length minus "RIFF" and file description
-  view.setUint32(8, 0x57415645, false); // "WAVE"
+  // WAV header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // subchunk1Size
+  view.setUint16(20, 1, true); // audioFormat
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * 2, true); // byteRate
+  view.setUint16(32, numChannels * 2, true); // blockAlign
+  view.setUint16(34, 16, true); // bitsPerSample
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
 
-  // "fmt " subchunk
-  view.setUint32(12, 0x666d7420, false); // "fmt "
-  view.setUint32(16, 16, true); // Length of "fmt " subchunk
-  view.setUint16(20, 1, true); // Audio format (1 = PCM)
-  view.setUint16(22, numChannels, true); // Number of channels
-  view.setUint32(24, sampleRate, true); // Sample rate
-  view.setUint32(28, sampleRate * numChannels * 2, true); // Byte rate
-  view.setUint16(32, numChannels * 2, true); // Block align
-  view.setUint16(34, 16, true); // Bits per sample
+  // PCM data
+  floatTo16BitPCM(view, 44, samples);
 
-  // "data" subchunk
-  view.setUint32(36, 0x64617461, false); // "data"
-  view.setUint32(40, dataLength, true); // Data chunk length
-
-  return header;
+  return view;
 }
 
-async function blobToWav(blob, sampleRate = 44100, numChannels = 1) {
-  const arrayBuffer = await blob.arrayBuffer();
-
-  // Use Web Audio API to decode the audio
-  const audioContext = new AudioContext();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-  // Extract PCM data from the audio buffer
-  const pcmData = [];
-  for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-    pcmData.push(audioBuffer.getChannelData(i)); // Float32Array for each channel
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
   }
-
-  // Convert Float32 PCM data to Int16
-  const int16PcmData = float32ToInt16(pcmData[0]); // Use only the first channel for mono
-
-  // Create WAV header
-  const wavHeader = createWavHeader(int16PcmData.length * 2, numChannels, sampleRate);
-
-  // Combine WAV header and PCM data into a single Blob
-  const wavBlob = new Blob([wavHeader, new Uint8Array(int16PcmData.buffer)], { type: 'audio/wav' });
-
-  return wavBlob;
 }
 
-// Function to convert Float32Array to Int16Array
-function float32ToInt16(float32Array) {
-  const int16Array = new Int16Array(float32Array.length);
-  for (let i = 0; i < float32Array.length; i++) {
-    int16Array[i] = Math.max(-1, Math.min(1, float32Array[i])) * 0x7fff; // Clamp values and scale
+function floatTo16BitPCM(view, offset, input) {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
-  return int16Array;
 }
